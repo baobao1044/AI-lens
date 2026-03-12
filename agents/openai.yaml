@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Lens"
+  short_description: "Explore large codebases with minimal token usage"
+  default_prompt: "Use $ai-lens to scan this repo, rank the important files, and answer from the index before reading source ranges."

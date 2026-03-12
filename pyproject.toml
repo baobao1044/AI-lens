@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-lens"
+version = "0.2.0"
+description = "Token-efficient codebase indexing and query tooling for Claude Code, Codex, and MCP clients."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "LicenseRef-Proprietary"
+authors = [
+  { name = "AI Lens contributors" }
+]
+dependencies = []
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.6.0"]
+tree-sitter = [
+  "tree-sitter>=0.23.0",
+  "tree-sitter-python>=0.23.0",
+  "tree-sitter-javascript>=0.23.0",
+  "tree-sitter-typescript>=0.23.0",
+  "tree-sitter-rust>=0.23.0",
+  "tree-sitter-go>=0.23.0",
+  "tree-sitter-java>=0.23.0",
+  "tree-sitter-c>=0.23.0",
+  "tree-sitter-cpp>=0.23.0",
+]
+semantic = [
+  "joblib>=1.4.0",
+  "numpy>=1.26.0",
+  "scikit-learn>=1.5.0",
+  "sentence-transformers>=3.0.0",
+]
+watch = ["watchdog>=4.0.0"]
+dev = [
+  "build>=1.2.0",
+  "PyYAML>=6.0.0",
+  "pytest>=8.2.0",
+]
+
+[project.scripts]
+ai-lens-mcp = "mcp_server:main"
+
+[tool.setuptools]
+py-modules = ["mcp_server"]
+
+[tool.setuptools.packages.find]
+include = ["scripts", "scripts.*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
