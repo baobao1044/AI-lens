@@ -12,6 +12,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    from .index_store import flatten_symbols, load_json, write_json
+except ImportError:
+    from index_store import flatten_symbols, load_json, write_json
+
 
 SEMANTIC_SCHEMA_VERSION = 1
 DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
@@ -90,7 +95,7 @@ def build_symbol_corpus(manifest_or_path: dict[str, Any] | str | Path) -> list[d
 
     corpus: list[dict[str, Any]] = []
     for file_entry in manifest.get("files", []):
-        flattened = _flatten_symbols(file_entry)
+        flattened = flatten_symbols(file_entry)
         if not flattened:
             continue
         for symbol in flattened:
@@ -110,7 +115,7 @@ def build_semantic_cache(
 ) -> dict[str, Any]:
     manifest, context = load_manifest(index_or_project_path)
     manifest_fingerprint = _manifest_fingerprint(manifest, context.manifest_path)
-    meta = _load_json(context.meta_path) or {}
+    meta = load_json(context.meta_path) or {}
 
     cache_ready = (
         not rebuild
@@ -125,7 +130,7 @@ def build_semantic_cache(
 
     corpus = build_symbol_corpus(manifest)
     context.semantic_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(
+    write_json(
         context.corpus_path,
         {
             "schema_version": SEMANTIC_SCHEMA_VERSION,
@@ -155,7 +160,7 @@ def build_semantic_cache(
         },
         "dependencies": dependency_status(),
     }
-    _write_json(context.meta_path, meta)
+    write_json(context.meta_path, meta)
     return meta
 
 
@@ -170,7 +175,7 @@ def query_semantic(
 ) -> dict[str, Any]:
     manifest, context = load_manifest(index_or_project_path)
     meta = build_semantic_cache(context.manifest_path, rebuild=rebuild)
-    corpus_entries = (_load_json(context.corpus_path) or {}).get("entries", [])
+    corpus_entries = (load_json(context.corpus_path) or {}).get("entries", [])
     if not corpus_entries:
         return {
             "mode": "semantic",
@@ -207,7 +212,7 @@ def query_semantic(
 
 def semantic_status(index_or_project_path: str | Path) -> dict[str, Any]:
     _, context = load_manifest(index_or_project_path)
-    meta = _load_json(context.meta_path)
+    meta = load_json(context.meta_path)
     if meta is None:
         return {
             "schema_version": SEMANTIC_SCHEMA_VERSION,
@@ -422,15 +427,7 @@ def _semantic_payload(
     return payload
 
 
-def _flatten_symbols(file_entry: dict[str, Any]) -> list[dict[str, Any]]:
-    flattened: list[dict[str, Any]] = []
-    for symbol in file_entry.get("symbols", []):
-        flattened.append(symbol)
-        for child in symbol.get("children", []):
-            merged = dict(child)
-            merged.setdefault("parent", symbol["name"])
-            flattened.append(merged)
-    return flattened
+
 
 
 def _symbol_document(file_entry: dict[str, Any], symbol: dict[str, Any]) -> dict[str, Any]:
@@ -499,18 +496,7 @@ def _manifest_fingerprint(manifest: dict[str, Any], manifest_path: Path) -> str:
     return digest.hexdigest()
 
 
-def _load_json(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
 
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def _choose_engine(meta: dict[str, Any], requested_engine: str) -> str:

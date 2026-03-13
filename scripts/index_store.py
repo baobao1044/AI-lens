@@ -12,7 +12,25 @@ MANIFEST_FILENAME = "manifest.json"
 SNAPSHOT_FILENAME = ".ai-lens.json"
 
 _MANIFEST_CACHE: dict[tuple[str, int], dict] = {}
+_CACHE_LOCK = threading.Lock()
 _SCAN_LOCKS: dict[str, threading.Lock] = {}
+_SCAN_LOCKS_LIMIT = 64
+
+
+def load_json(path: Path) -> dict | None:
+    """Load a JSON file, returning None if missing or invalid."""
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def write_json(path: Path, payload: dict) -> None:
+    """Write a dict as pretty-printed JSON to a file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def normalize_project_path(project_path: str | Path) -> Path:
@@ -56,13 +74,15 @@ def load_manifest(index_or_project_path: str | Path, *, use_cache: bool = True) 
     manifest_path = resolve_index_path(index_or_project_path)
     stat = manifest_path.stat()
     cache_key = (str(manifest_path), stat.st_mtime_ns)
-    if use_cache and cache_key in _MANIFEST_CACHE:
-        return _MANIFEST_CACHE[cache_key], manifest_path
+    with _CACHE_LOCK:
+        if use_cache and cache_key in _MANIFEST_CACHE:
+            return _MANIFEST_CACHE[cache_key], manifest_path
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if use_cache:
-        _MANIFEST_CACHE.clear()
-        _MANIFEST_CACHE[cache_key] = manifest
+        with _CACHE_LOCK:
+            _MANIFEST_CACHE.clear()
+            _MANIFEST_CACHE[cache_key] = manifest
     return manifest, manifest_path
 
 

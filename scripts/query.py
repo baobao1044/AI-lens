@@ -11,10 +11,16 @@ try:
     from .index_store import detect_stale, flatten_symbols, load_manifest, read_symbol_range, symbol_summary
     from .semantic import query_semantic as run_semantic_query
     from .symbol_graph import query_call_chain as run_call_chain_query
+    from .dead_code import detect_dead_code, format_dead_code_report
+    from .complexity import calculate_complexity, format_complexity_report
+    from .impact import analyse_impact, format_impact_report
 except ImportError:
     from index_store import detect_stale, flatten_symbols, load_manifest, read_symbol_range, symbol_summary
     from semantic import query_semantic as run_semantic_query
     from symbol_graph import query_call_chain as run_call_chain_query
+    from dead_code import detect_dead_code, format_dead_code_report
+    from complexity import calculate_complexity, format_complexity_report
+    from impact import analyse_impact, format_impact_report
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,10 +34,14 @@ def parse_args() -> argparse.Namespace:
     group.add_argument("--semantic", help="Find symbols by meaning using TF-IDF, embeddings, or lexical fallback.")
     group.add_argument("--call-chain", dest="call_chain", help="Trace the call chain for a symbol.")
     group.add_argument("--type", choices=["architecture", "full"], help="Built-in query mode.")
+    group.add_argument("--dead-code", dest="dead_code", action="store_true", help="Detect potentially dead code.")
+    group.add_argument("--complexity", action="store_true", help="Calculate complexity metrics for functions.")
+    group.add_argument("--impact", nargs="+", metavar="FILE", help="Analyse impact of changing given files.")
     parser.add_argument("--top", type=int, default=10, help="Maximum number of results to show.")
     parser.add_argument("--depth", type=int, default=3, help="Depth for --call-chain traversal.")
     parser.add_argument("--direction", choices=["down", "up"], default="down", help="Direction for --call-chain traversal.")
     parser.add_argument("--semantic-engine", choices=["auto", "tfidf", "embedding", "lexical"], default="auto", help="Engine preference for --semantic.")
+    parser.add_argument("--sort-by", dest="sort_by", choices=["cyclomatic", "loc", "params"], default="cyclomatic", help="Sort key for --complexity.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable output.")
     parser.add_argument("--include-dependents", action="store_true", help="Include dependent file paths in related and symbol output.")
     return parser.parse_args()
@@ -53,6 +63,12 @@ def main() -> int:
         payload = query_call_chain(args.index, args.call_chain, depth=args.depth, direction=args.direction, top=args.top)
     elif args.type == "architecture":
         payload = query_architecture(args.index, top=args.top)
+    elif args.dead_code:
+        payload = detect_dead_code(args.index)
+    elif args.complexity:
+        payload = calculate_complexity(args.index, max_results=args.top, sort_by=args.sort_by)
+    elif args.impact:
+        payload = analyse_impact(args.index, args.impact)
     else:
         payload = query_full(args.index, top=args.top, as_json=args.json)
 

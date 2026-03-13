@@ -135,6 +135,34 @@ PATTERNS: dict[str, list[tuple[re.Pattern[str], str]]] = {
         (re.compile(r"^((?:template\s*<[^>]+>\s*)?(?:class|struct)\s+([A-Za-z_][\w]*).*)", re.MULTILINE), "class"),
         (re.compile(r"^([A-Za-z_:\<\>\~\w\s\*&]+\s+([A-Za-z_][\w:]*)\s*\([^;]*\))\s*(?:const)?\s*\{", re.MULTILINE), "function"),
     ],
+    "ruby": [
+        (re.compile(r"^(\s*class\s+([A-Za-z_][\w:]*)(?:\s*<\s*[A-Za-z_][\w:]*)?)", re.MULTILINE), "class"),
+        (re.compile(r"^(\s*module\s+([A-Za-z_][\w:]*))", re.MULTILINE), "module"),
+        (re.compile(r"^(\s*def\s+(?:self\.)?([A-Za-z_][\w?!]*)(?:\s*\([^)]*\))?)", re.MULTILINE), "function"),
+        (re.compile(r"^(require\s+.+|require_relative\s+.+)", re.MULTILINE), "import"),
+    ],
+    "php": [
+        (re.compile(r"^(\s*(?:abstract\s+|final\s+)?class\s+([A-Za-z_][\w]*)(?:\s+extends\s+[A-Za-z_][\w]*)?(?:\s+implements\s+[^\n{]+)?)", re.MULTILINE), "class"),
+        (re.compile(r"^(\s*interface\s+([A-Za-z_][\w]*))", re.MULTILINE), "interface"),
+        (re.compile(r"^(\s*trait\s+([A-Za-z_][\w]*))", re.MULTILINE), "trait"),
+        (re.compile(r"^(\s*(?:public|protected|private|static|\s)*function\s+([A-Za-z_][\w]*)\s*\([^)]*\))", re.MULTILINE), "function"),
+        (re.compile(r"^(use\s+.+;|namespace\s+.+;)", re.MULTILINE), "import"),
+    ],
+    "kotlin": [
+        (re.compile(r"^(\s*(?:open|abstract|data|sealed|inner|enum)?\s*class\s+([A-Za-z_][\w]*)(?:\s*\([^)]*\))?(?:\s*:\s*[^\n{]+)?)", re.MULTILINE), "class"),
+        (re.compile(r"^(\s*interface\s+([A-Za-z_][\w]*))", re.MULTILINE), "interface"),
+        (re.compile(r"^(\s*object\s+([A-Za-z_][\w]*))", re.MULTILINE), "class"),
+        (re.compile(r"^(\s*(?:(?:override|open|abstract|private|public|internal|protected|suspend|inline)\s+)*fun\s+(?:<[^>]+>\s*)?([A-Za-z_][\w]*)\s*\([^)]*\))", re.MULTILINE), "function"),
+        (re.compile(r"^(import\s+.+)", re.MULTILINE), "import"),
+    ],
+    "swift": [
+        (re.compile(r"^(\s*(?:open|public|internal|fileprivate|private|final)?\s*class\s+([A-Za-z_][\w]*)(?:\s*:\s*[^\n{]+)?)", re.MULTILINE), "class"),
+        (re.compile(r"^(\s*struct\s+([A-Za-z_][\w]*)(?:\s*:\s*[^\n{]+)?)", re.MULTILINE), "struct"),
+        (re.compile(r"^(\s*protocol\s+([A-Za-z_][\w]*))", re.MULTILINE), "interface"),
+        (re.compile(r"^(\s*enum\s+([A-Za-z_][\w]*))", re.MULTILINE), "enum"),
+        (re.compile(r"^(\s*(?:(?:override|open|public|private|internal|fileprivate|static|class|mutating)\s+)*func\s+([A-Za-z_][\w]*)\s*\([^)]*\)(?:\s*->\s*[^\n{]+)?)", re.MULTILINE), "function"),
+        (re.compile(r"^(import\s+.+)", re.MULTILINE), "import"),
+    ],
 }
 
 

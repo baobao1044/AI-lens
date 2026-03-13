@@ -8,6 +8,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,12 +19,12 @@ except ModuleNotFoundError:  # pragma: no cover
     tomllib = None
 
 try:
-    from .index_store import index_paths
+    from .index_store import index_paths, load_json, write_json
     from .parsers import ParserUnavailable, parse_with_fallback, parse_with_tree_sitter
     from .parsers.tree_sitter import available_languages as tree_sitter_available_languages
     from .symbol_graph import build_symbol_graph, write_symbol_graph
 except ImportError:
-    from index_store import index_paths
+    from index_store import index_paths, load_json, write_json
     from parsers import ParserUnavailable, parse_with_fallback, parse_with_tree_sitter
     from parsers.tree_sitter import available_languages as tree_sitter_available_languages
     from symbol_graph import build_symbol_graph, write_symbol_graph
@@ -51,7 +52,7 @@ SKIP_DIRS = {
     ".vscode",
 }
 SKIP_FILES = {".ai-lens.json"}
-SOURCE_LANGUAGES = {"python", "javascript", "typescript", "rust", "go", "java", "c", "cpp"}
+SOURCE_LANGUAGES = {"python", "javascript", "typescript", "rust", "go", "java", "c", "cpp", "ruby", "php", "kotlin", "swift"}
 ENTRYPOINT_FILES = {
     "main.py",
     "app.py",
@@ -68,6 +69,12 @@ ENTRYPOINT_FILES = {
     "Main.java",
     "main.c",
     "main.cpp",
+    "main.rb",
+    "app.rb",
+    "index.php",
+    "main.kt",
+    "main.swift",
+    "AppDelegate.swift",
 }
 CONFIG_BONUS_FILES = {
     "package.json",
@@ -110,6 +117,11 @@ EXTENSION_LANGUAGE = {
     ".hh": "cpp",
     ".hpp": "cpp",
     ".hxx": "cpp",
+    ".rb": "ruby",
+    ".php": "php",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".swift": "swift",
     ".md": "markdown",
     ".json": "json",
     ".toml": "toml",
@@ -117,6 +129,11 @@ EXTENSION_LANGUAGE = {
     ".yml": "yaml",
     ".xml": "xml",
     ".sh": "shell",
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".scss": "scss",
+    ".less": "less",
 }
 
 
@@ -520,29 +537,48 @@ def extract_exports(language: str, symbols: list[dict]) -> list[str]:
 
 def parse_import_entry(language: str, entry: str) -> list[str]:
     if language in {"javascript", "typescript"}:
-        matches = re_findall(r"""from\s+['"]([^'"]+)['"]|import\s+['"]([^'"]+)['"]""", entry)
+        matches = re.findall(r"""from\s+['"]([^'"]+)['"]|import\s+['"]([^'"]+)['"]""", entry)
         return [match for pair in matches for match in pair if match]
     if language == "python":
-        match = re_match(r"from\s+([^\s]+)\s+import", entry)
+        match = re.match(r"from\s+([^\s]+)\s+import", entry)
         if match:
             return [match.group(1)]
-        match = re_match(r"import\s+(.+)", entry)
+        match = re.match(r"import\s+(.+)", entry)
         if match:
             return [chunk.strip().split(" as ")[0] for chunk in match.group(1).split(",")]
     if language == "rust":
-        match = re_match(r"use\s+(.+);", entry)
+        match = re.match(r"use\s+(.+);", entry)
         if match:
             return [match.group(1)]
     if language == "go":
-        return re_findall(r'"([^"]+)"', entry)
+        return re.findall(r'"([^"]+)"', entry)
     if language == "java":
-        match = re_match(r"import\s+(.+);", entry)
+        match = re.match(r"import\s+(.+);", entry)
         if match:
             return [match.group(1)]
     if language in {"c", "cpp"}:
-        match = re_match(r"#include\s+([<\"].+[>\"])", entry)
+        match = re.match(r"#include\s+([<\"].+[>\"])", entry)
         if match:
             return [match.group(1)]
+    if language == "ruby":
+        match = re.match(r"require(?:_relative)?\s+['\"]([^'\"]+)['\"]", entry)
+        if match:
+            return [match.group(1)]
+    if language == "php":
+        match = re.match(r"use\s+(.+);", entry)
+        if match:
+            return [match.group(1).split(" as ")[0].strip()]
+        match = re.match(r"namespace\s+(.+);", entry)
+        if match:
+            return [match.group(1)]
+    if language == "kotlin":
+        match = re.match(r"import\s+(.+)", entry)
+        if match:
+            return [match.group(1).split(" as ")[0].strip()]
+    if language == "swift":
+        match = re.match(r"import\s+(.+)", entry)
+        if match:
+            return [match.group(1).strip()]
     return []
 
 
@@ -558,8 +594,8 @@ def parse_export_entry(entry: str) -> list[str]:
         r"export\s+enum\s+([A-Za-z_$][\w$]*)",
         r"export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)",
     ]:
-        names.extend(re_findall(pattern, entry))
-    brace_match = re_match(r"export\s*\{(.+)\}", entry)
+        names.extend(re.findall(pattern, entry))
+    brace_match = re.match(r"export\s*\{(.+)\}", entry)
     if brace_match:
         for chunk in brace_match.group(1).split(","):
             names.append(chunk.strip().split(" as ")[-1])
@@ -580,18 +616,7 @@ def build_tree(records: dict[str, dict]) -> dict[str, list[str]]:
     return {key: sorted(value) for key, value in sorted(tree.items())}
 
 
-def load_json(path: Path) -> dict | None:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
 
-
-def write_json(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def cleanup_deleted_caches(root: Path, old_files: dict[str, dict], deleted_paths: list[str]) -> None:
@@ -627,31 +652,103 @@ def timeout_record(item: dict) -> dict:
 
 
 def read_gitignore(root: Path) -> list[str]:
-    path = root / ".gitignore"
-    if not path.exists():
-        return []
-    patterns = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        patterns.append(stripped.rstrip("/"))
+    """Read .gitignore from project root and any nested directories.
+
+    Supports:
+    - Comment lines (# ...)
+    - Negation patterns (! prefix preserved for is_ignored)
+    - Trailing slash stripping for directory patterns
+    - Nested .gitignore files (patterns prefixed with relative path)
+    """
+    patterns: list[str] = []
+
+    # Read root .gitignore
+    root_gi = root / ".gitignore"
+    if root_gi.exists():
+        for line in root_gi.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            # Preserve negation prefix but strip trailing /
+            if stripped.startswith("!"):
+                patterns.append("!" + stripped[1:].rstrip("/"))
+            else:
+                patterns.append(stripped.rstrip("/"))
+
+    # Read nested .gitignore files (one level deep for performance)
+    try:
+        for child in root.iterdir():
+            if child.is_dir() and child.name not in SKIP_DIRS:
+                nested_gi = child / ".gitignore"
+                if nested_gi.exists():
+                    prefix = child.name
+                    for line in nested_gi.read_text(encoding="utf-8", errors="replace").splitlines():
+                        stripped = line.strip()
+                        if not stripped or stripped.startswith("#"):
+                            continue
+                        clean = stripped.rstrip("/")
+                        if clean.startswith("!"):
+                            patterns.append(f"!{prefix}/{clean[1:]}")
+                        else:
+                            patterns.append(f"{prefix}/{clean}")
+    except OSError:
+        pass
+
     return patterns
 
 
 def is_ignored(rel_path: str, patterns: list[str], *, is_dir: bool) -> bool:
+    """Check if a relative path matches any gitignore pattern.
+
+    Supports:
+    - Negation patterns (! prefix) that un-ignore previously matched paths
+    - Doublestar ** for matching any number of directories
+    - Basename matching for patterns without /
+    - Directory-only matching
+    """
     if not rel_path:
         return False
     path = rel_path.replace("\\", "/")
+    basename = Path(path).name
+    ignored = False
+
     for pattern in patterns:
-        normalized = pattern.replace("\\", "/").lstrip("/")
-        if "/" not in normalized and fnmatch.fnmatch(Path(path).name, normalized):
-            return True
-        if fnmatch.fnmatch(path, normalized):
-            return True
-        if is_dir and (path == normalized or path.startswith(f"{normalized}/")):
-            return True
-    return False
+        # Handle negation
+        negated = pattern.startswith("!")
+        clean = pattern[1:] if negated else pattern
+        clean = clean.replace("\\", "/").lstrip("/")
+
+        if not clean:
+            continue
+
+        matched = False
+
+        # Replace ** with fnmatch-compatible pattern
+        if "**" in clean:
+            # Convert **/ to match any number of directories
+            glob_pattern = clean.replace("**/", "*/").replace("/**", "/*")
+            # Also try with the ** expanded
+            if fnmatch.fnmatch(path, clean.replace("**", "*")):
+                matched = True
+            elif fnmatch.fnmatch(path, glob_pattern):
+                matched = True
+        elif "/" not in clean:
+            # Basename-only pattern: match against the filename
+            if fnmatch.fnmatch(basename, clean):
+                matched = True
+        else:
+            # Path pattern
+            if fnmatch.fnmatch(path, clean):
+                matched = True
+
+        # Also check directory prefix matching
+        if not matched and is_dir and (path == clean or path.startswith(f"{clean}/")):
+            matched = True
+
+        if matched:
+            ignored = not negated
+
+    return ignored
 
 
 def detect_language(path: Path) -> str | None:
@@ -802,16 +899,6 @@ def join_rel(prefix: str, name: str) -> str:
     return f"{prefix}/{name}" if prefix else name
 
 
-def re_match(pattern: str, text: str):
-    import re
-
-    return re.match(pattern, text)
-
-
-def re_findall(pattern: str, text: str):
-    import re
-
-    return re.findall(pattern, text)
 
 
 if __name__ == "__main__":
